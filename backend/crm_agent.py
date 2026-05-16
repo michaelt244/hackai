@@ -1,16 +1,11 @@
-import json
 import os
+import json
+from anthropic import AsyncAnthropic
+from context import get_augmented_system_prompt, add_message
 
-import httpx
+anthropic = AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
-HF_BASE = "https://router.huggingface.co/featherless-ai/v1/chat/completions"
-HF_HEADERS = {
-    "Authorization": f"Bearer {HF_TOKEN}",
-    "Content-Type": "application/json",
-}
-
-_SYSTEM_PROMPT = """You are a relationship intelligence agent that parses voice notes about meetings.
+SYSTEM_PROMPT = """You are a relationship intelligence agent that parses voice notes about meetings and interactions.
 
 INPUT: Raw voice transcription of a user talking about a meeting or contact.
 
@@ -25,36 +20,25 @@ OUTPUT: Respond ONLY with valid JSON, no other text:
   "actionItems": ["array of specific next steps"],
   "sentiment": "positive | neutral | negative",
   "followUpDate": "ISO 8601 date string or null",
-  "suggestedMessage": "1-2 sentence summary of what to do next"
+  "suggestedMessage": "1-2 sentence conversational summary of what to do next"
 }"""
 
-_EMPTY = {
-    "contact": {"name": None, "company": None, "role": None, "context": ""},
-    "actionItems": [],
-    "sentiment": "neutral",
-    "followUpDate": None,
-    "suggestedMessage": "",
-}
 
+async def parse_voice_note(transcript: str, channel_id: str) -> dict:
+    # Augment system prompt with this channel's memory
+    augmented_prompt = await get_augmented_system_prompt(channel_id, SYSTEM_PROMPT)
 
-async def parse_voice_note(transcript: str) -> dict:
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            HF_BASE,
-            headers=HF_HEADERS,
-            json={
-                "model": "Qwen/Qwen2.5-7B-Instruct",
-                "messages": [
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": transcript},
-                ],
-                "max_tokens": 512,
-            },
-        )
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            result = _EMPTY.copy()
-            result["contact"] = {**_EMPTY["contact"], "context": raw}
-            return result
+    resp = await anthropic.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=512,
+        system=augmented_prompt,
+        messages=[{"role": "user", "content": transcript}],
+    )
+
+    result = json.loads(resp.content[0].text)
+
+    # Save both sides to channel context for next call
+    add_message(channel_id, "user", transcript)
+    add_message(channel_id, "assistant", json.dumps(result))
+
+    return result
