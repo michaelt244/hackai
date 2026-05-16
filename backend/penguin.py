@@ -9,7 +9,7 @@ from router import HF_BASE, HF_HEADERS, WORKER_COMPLEX
 
 router = APIRouter()
 
-BLUEBUBBLES_URL = os.getenv("BLUEBUBBLES_URL", "")
+BLUEBUBBLES_URL = os.getenv("BLUEBUBBLES_URL", "").rstrip("/")
 BLUEBUBBLES_PASSWORD = os.getenv("BLUEBUBBLES_PASSWORD", "")
 DEMO_CHAT_GUID = os.getenv("DEMO_CHAT_GUID", "any;+;6d23dfa9618e444e81cc9220769d5c4d")
 
