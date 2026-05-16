@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from context import add_message, get_context
 from crm_agent import parse_voice_note
+from penguin import router as penguin_router
 from router import HF_BASE, HF_HEADERS, _INTENT_MAP, route_message
 from savings import get_stats, record_cost, save_contact
 
@@ -26,6 +27,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(penguin_router)
 
 
 class ChatRequest(BaseModel):
