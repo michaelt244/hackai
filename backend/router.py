@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 import re
@@ -103,16 +102,19 @@ _CASUAL_RE = re.compile(
     r"^\s*(hi|hey|hello|thanks|thank you|ty|yes|no|ok|okay|sure|got it|sounds good|lol|haha|yep|nope)[\s!?.]*$",
     re.IGNORECASE,
 )
+# Require an action verb before the content keyword to avoid false positives
+# e.g. "fix this", "rewrite that", "clean up my email" — not "the icon on my shirt"
 _CLEANUP_RE = re.compile(
-    r"\b(fix|clean up|rewrite|rephrase|improve|edit|proofread|grammar|spelling|tone|formal|professional|polish)\b",
+    r"\b(fix|clean up|rewrite|rephrase|improve|edit|proofread|make.{0,10}(formal|professional)|polish)\b.{0,60}\b(this|that|sentence|email|message|text|paragraph|copy)\b",
     re.IGNORECASE,
 )
 _TRANSCRIBE_RE = re.compile(
-    r"\b(summarize|summary|meeting notes|recap|action items|call notes|voice note|talked to|met with|agreed to|follow.?up)\b",
+    r"\b(summarize|summary|meeting notes|recap|action items|call notes|voice note|met with|talked to|agreed to)\b",
     re.IGNORECASE,
 )
 _DESIGN_RE = re.compile(
-    r"\b(figma|mockup|wireframe|color|colour|font|typography|layout|sidebar|padding|margin|ui|ux|design|button|icon|spacing|brand|logo)\b",
+    r"\b(figma|mockup|wireframe|typography|sidebar|padding|margin|ui|ux|spacing|brand|logo)\b"
+    r"|\b(color|colour|font|layout|design|button|icon)\b.{0,40}\b(app|site|page|component|screen|ui|ux|brand)\b",
     re.IGNORECASE,
 )
 
