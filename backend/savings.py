@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 
 import httpx
@@ -25,6 +26,26 @@ async def record_cost(channel_id: str, cost_cents: float):
             headers=_headers,
             json={"channel_id": channel_id, "cost_cents": cost_cents},
         )
+
+
+async def save_contact(channel_id: str, contact_data: dict):
+    if not BUTTERBASE_URL:
+        return
+    contact = contact_data.get("contact", {})
+    payload = {"channel_id": channel_id}
+    for col, val in {
+        "name": contact.get("name"),
+        "company": contact.get("company"),
+        "role": contact.get("role"),
+        "context": contact.get("context"),
+        "action_items": json.dumps(contact_data.get("actionItems", [])),
+        "sentiment": contact_data.get("sentiment"),
+        "follow_up_date": contact_data.get("followUpDate"),
+    }.items():
+        if val is not None:
+            payload[col] = val
+    async with httpx.AsyncClient(timeout=5) as client:
+        await client.post(f"{BUTTERBASE_URL}/contacts", headers=_headers, json=payload)
 
 
 async def get_stats(channel_id: str) -> dict:

@@ -1,3 +1,5 @@
+import os
+
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,7 +8,15 @@ from pydantic import BaseModel
 from context import add_message, get_context
 from crm_agent import parse_voice_note
 from router import HF_BASE, HF_HEADERS, _INTENT_MAP, route_message
-from savings import get_stats, record_cost
+from savings import get_stats, record_cost, save_contact
+
+BUTTERBASE_URL = os.environ.get("BUTTERBASE_URL", "")
+BUTTERBASE_KEY = os.environ.get("BUTTERBASE_ANON_KEY", "")
+_BB_HEADERS = {
+    "apikey": BUTTERBASE_KEY,
+    "Authorization": f"Bearer {BUTTERBASE_KEY}",
+    "Accept": "application/json",
+}
 
 app = FastAPI()
 
@@ -32,10 +42,10 @@ class VoiceNoteRequest(BaseModel):
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    context = get_context(req.channel_id)
+    context = await get_context(req.channel_id)
     result = await route_message(req.message, context)
-    add_message(req.channel_id, "user", req.message)
-    add_message(req.channel_id, "assistant", result["response"])
+    await add_message(req.channel_id, "user", req.message)
+    await add_message(req.channel_id, "assistant", result["response"])
     await record_cost(req.channel_id, result["cost"])
     return {
         "response": result["response"],
@@ -49,7 +59,8 @@ async def chat(req: ChatRequest):
 @app.post("/voice-note")
 async def voice_note(req: VoiceNoteRequest):
     contact = await parse_voice_note(req.transcript)
-    add_message(req.channel_id, "user", f"[voice note] {req.transcript}")
+    await add_message(req.channel_id, "user", f"[voice note] {req.transcript}")
+    await save_contact(req.channel_id, contact)
     await record_cost(req.channel_id, 0.5)
     return contact
 
@@ -57,6 +68,19 @@ async def voice_note(req: VoiceNoteRequest):
 @app.get("/stats/{channel_id}")
 async def stats(channel_id: str):
     return await get_stats(channel_id)
+
+
+@app.get("/contacts/{channel_id}")
+async def contacts(channel_id: str):
+    if not BUTTERBASE_URL:
+        return []
+    async with httpx.AsyncClient(timeout=5) as client:
+        resp = await client.get(
+            f"{BUTTERBASE_URL}/contacts",
+            headers=_BB_HEADERS,
+            params={"channel_id": f"eq.{channel_id}", "order": "created_at.desc"},
+        )
+    return resp.json() if resp.status_code == 200 else []
 
 
 @app.post("/warmup")
@@ -80,3 +104,22 @@ async def warmup():
             except Exception as e:
                 results[intent] = str(e)
     return {"warmed": results}
+
+
+# OpenAI-compatible endpoint for Tencent TRTC Conversational AI
+@app.post("/v1/chat/completions")
+async def openai_compat(req: dict):
+    messages = req.get("messages", [])
+    message = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    context = [m for m in messages if m["role"] in ("user", "assistant")][:-1]
+    result = await route_message(message, context)
+    return {
+        "id": "chatcmpl-trtc",
+        "object": "chat.completion",
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": result["response"]},
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": -1, "completion_tokens": -1, "total_tokens": -1},
+    }

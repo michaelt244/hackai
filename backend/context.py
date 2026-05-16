@@ -1,64 +1,73 @@
-# TEAMMATE 1 — owns this file
-# Implement: get_context(channel_id), add_message(channel_id, role, content)
-# See README for full spec.
-
-import os
 import json
+import os
+from datetime import date
 
-_windows: dict[str, list[dict]] = {}
+import httpx
+
+BUTTERBASE_URL = os.environ.get("BUTTERBASE_URL", "")
+BUTTERBASE_KEY = os.environ.get("BUTTERBASE_ANON_KEY", "")
+
 MAX_MESSAGES = 20
 
-# Persistence layer
-CONTEXT_DIR = "chat_contexts"
-os.makedirs(CONTEXT_DIR, exist_ok=True)
+_windows: dict[str, list[dict]] = {}
+
+_headers = {
+    "apikey": BUTTERBASE_KEY,
+    "Authorization": f"Bearer {BUTTERBASE_KEY}",
+    "Content-Type": "application/json",
+}
 
 
-def _get_context_file(channel_id: str) -> str:
-    return os.path.join(CONTEXT_DIR, f"{channel_id}.json")
-
-
-def _load_from_disk(channel_id: str) -> list[dict]:
-    file_path = _get_context_file(channel_id)
-    if os.path.exists(file_path):
+async def get_context(channel_id: str) -> list[dict]:
+    if channel_id in _windows:
+        return _windows[channel_id]
+    if not BUTTERBASE_URL:
+        _windows[channel_id] = []
+        return []
+    async with httpx.AsyncClient(timeout=5) as client:
+        resp = await client.get(
+            f"{BUTTERBASE_URL}/channel_summaries",
+            headers={**_headers, "Accept": "application/json"},
+            params={"channel_id": f"eq.{channel_id}", "order": "summary_date.desc", "limit": "1"},
+        )
+    rows = resp.json() if resp.status_code == 200 else []
+    if rows:
         try:
-            with open(file_path, "r") as f:
-                return json.load(f)
+            _windows[channel_id] = json.loads(rows[0]["summary_text"])
         except Exception:
-            return []
-    return []
+            _windows[channel_id] = []
+    else:
+        _windows[channel_id] = []
+    return _windows[channel_id]
 
 
-def _save_to_disk(channel_id: str, messages: list[dict]):
-    with open(_get_context_file(channel_id), "w") as f:
-        json.dump(messages, f, indent=2)
-
-
-def get_context(channel_id: str) -> list[dict]:
-    if channel_id not in _windows:
-        _windows[channel_id] = _load_from_disk(channel_id)
-    return _windows.get(channel_id, [])
-
-
-def add_message(channel_id: str, role: str, content: str):
+async def add_message(channel_id: str, role: str, content: str):
     if channel_id not in _windows:
         _windows[channel_id] = []
     _windows[channel_id].append({"role": role, "content": content})
     if len(_windows[channel_id]) > MAX_MESSAGES:
         _windows[channel_id] = _windows[channel_id][-MAX_MESSAGES:]
-    _save_to_disk(channel_id, _windows[channel_id])
+    if not BUTTERBASE_URL:
+        return
+    async with httpx.AsyncClient(timeout=5) as client:
+        await client.post(
+            f"{BUTTERBASE_URL}/channel_summaries",
+            headers={**_headers, "Prefer": "resolution=merge-duplicates"},
+            json={
+                "channel_id": channel_id,
+                "summary_date": date.today().isoformat(),
+                "summary_text": json.dumps(_windows[channel_id]),
+            },
+        )
 
 
-def build_context_string(channel_id: str, limit: int = 5) -> str:
-    """Summarize recent messages into plain text for the system prompt."""
-    messages = get_context(channel_id)
+def build_context_string(messages: list[dict], limit: int = 5) -> str:
     if not messages:
         return "No prior context for this channel."
-
     lines = []
     for msg in messages[-limit:]:
         role = "User" if msg["role"] == "user" else "Agent"
         content = msg["content"]
-        # If agent JSON, extract readable summary
         try:
             data = json.loads(content)
             if "contact" in data:
@@ -70,13 +79,12 @@ def build_context_string(channel_id: str, limit: int = 5) -> str:
                 lines.append(f"{role}: {content[:120]}")
         except Exception:
             lines.append(f"{role}: {content[:120]}")
-
     return "\n".join(lines)
 
 
 async def get_augmented_system_prompt(channel_id: str, base_prompt: str) -> str:
-    """Inject channel memory into the system prompt."""
-    context_summary = build_context_string(channel_id)
+    messages = await get_context(channel_id)
+    context_summary = build_context_string(messages)
     return f"""{base_prompt}
 
 ---
