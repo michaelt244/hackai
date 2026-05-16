@@ -34,3 +34,6 @@ env/
 
 # Logs
 *.log
+
+# Local context storage (replaced by Butterbase)
+chat_contexts/
