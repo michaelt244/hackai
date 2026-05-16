@@ -38,8 +38,9 @@ async def chat(req: ChatRequest):
     return {
         "response": result["response"],
         "model": result["model"],
+        "intent": result["intent"],
         "cost": result["cost"],
-        "badge": f"[{result['model']} · {result['cost']:.1f}¢]",
+        "badge": f"[{result['model']} · {result['intent']} · {result['cost']:.1f}¢]",
     }
 
 
@@ -48,7 +49,7 @@ async def voice_note(req: VoiceNoteRequest):
     contact = await parse_voice_note(req.transcript)
     add_message(req.channel_id, "user", f"[voice note] {req.transcript}")
     record_cost(req.channel_id, 0.5)
-    return {"contact": contact}
+    return contact
 
 
 @app.get("/stats/{channel_id}")
