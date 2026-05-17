@@ -133,10 +133,7 @@ BUTTERBASE_ANON_KEY    # bb_sk_...
 BLUEBUBBLES_URL        # Cloudflare tunnel URL to Mac running BlueBubbles
 BLUEBUBBLES_PASSWORD   # BlueBubbles server password
 DEMO_CHAT_GUID         # iMessage group GUID
-GOOGLE_CLIENT_ID       # OAuth client ID (from Google Cloud Console)
-GOOGLE_CLIENT_SECRET   # OAuth client secret
-GOOGLE_REFRESH_TOKEN   # Long-lived token (run get_google_token.py once locally)
-TEAM_EMAIL             # Comma-separated recipient list for "email everyone"
+
 ```
 
 ---
