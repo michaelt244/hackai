@@ -25,12 +25,59 @@ Penguin lives inside your iMessage group chat (via BlueBubbles) and your web cha
 ## Architecture
 
 ```
-iMessage → BlueBubbles → POST /webhook → Penguin agent → BlueBubbles reply
-Web chat → Bubble     → POST /chat    → Intent router → Response
-
-POST /voice-note → Qwen CRM parser → Butterbase contacts table
-GET  /contacts/{channel_id}        → Contact cards for frontend
-GET  /stats/{channel_id}           → Cost savings display
+┌─────────────────────────────────────────────────────────────────┐
+│                         INPUT LAYER                             │
+│                                                                 │
+│   VoiceOS ──speak──► iMessage Group Chat                       │
+│                             │  "@penguin action: ..."          │
+└─────────────────────────────┼───────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        BRIDGE LAYER                             │
+│                                                                 │
+│   Mac + BlueBubbles ◄── AppleScript ──► iMessage               │
+│            │                                                    │
+│     Cloudflare Tunnel                                           │
+└─────────────────────────────┼───────────────────────────────────┘
+                              │ POST /webhook
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    RAILWAY / FastAPI                             │
+│                                                                 │
+│   /webhook ──► LRU dedup ──► chat filter ──► @penguin?         │
+│                                                    │            │
+│                                          ┌────────┴────────┐   │
+│                                         Yes                No  │
+│                                          │          (stored in │
+│                                          │           context)  │
+│                                    action: ?                   │
+│                               ┌─────────┴──────────┐          │
+│                              Yes                    No         │
+│                               │                     │          │
+│                               ▼                     ▼          │
+│                      ┌─────────────┐    ┌─────────────────┐   │
+│                      │  LLM Action │    │  Intent Router  │   │
+│                      │   Parser    │    │                 │   │
+│                      │  (Qwen 14B) │    │ 1. keyword check│   │
+│                      └──────┬──────┘    │ 2. Qwen 1.5B   │   │
+│                             │           └────────┬────────┘   │
+│                             ▼                    │             │
+│                    ┌────────────────┐   ┌────────▼──────────┐ │
+│                    │  Google APIs   │   │  Model Dispatch   │ │
+│                    │  • Calendar    │   │                   │ │
+│                    │  • Gmail       │   │ casual → Qwen 1.5B│ │
+│                    └────────────────┘   │ design → Qwen 7B  │ │
+│                                        │ transcribe→Mistral │ │
+│                                        │ cleanup → Gemma 9B │ │
+│                                        │ complex → Qwen 14B │ │
+│                                        └───────────────────┘  │
+│                                                                 │
+│   Butterbase ──────── rolling context + CRM per channel        │
+└─────────────────────────────┼───────────────────────────────────┘
+                              │ reply
+                              ▼
+                 BlueBubbles → iMessage Chat
 ```
 
 ---
@@ -67,10 +114,12 @@ Keyword pre-filter runs first (zero latency). Falls back to Qwen 1.5B classifier
 ## Stack
 
 - **Backend**: FastAPI + uvicorn (Python 3.12)
-- **Models**: HuggingFace featherless-ai (Qwen, Mistral, Gemma)
-- **Persistence**: Butterbase (PostgREST-compatible)
-- **iMessage**: BlueBubbles + Cloudflare tunnel
-- **Frontend**: Bubble (REST via API Connector)
+- **Models**: HuggingFace featherless-ai (Qwen 1.5B / 7B / 14B, Mistral 7B, Gemma 2 9B)
+- **Persistence**: Butterbase (channel context + CRM)
+- **iMessage**: BlueBubbles + Cloudflare Tunnel
+- **Voice input**: VoiceOS → iMessage → Penguin
+- **Actions**: Google Calendar API + Gmail API
+- **Dev tooling**: AdaL AI coding agent
 - **Deploy**: Railway
 
 ---
@@ -84,6 +133,10 @@ BUTTERBASE_ANON_KEY    # bb_sk_...
 BLUEBUBBLES_URL        # Cloudflare tunnel URL to Mac running BlueBubbles
 BLUEBUBBLES_PASSWORD   # BlueBubbles server password
 DEMO_CHAT_GUID         # iMessage group GUID
+GOOGLE_CLIENT_ID       # OAuth client ID (from Google Cloud Console)
+GOOGLE_CLIENT_SECRET   # OAuth client secret
+GOOGLE_REFRESH_TOKEN   # Long-lived token (run get_google_token.py once locally)
+TEAM_EMAIL             # Comma-separated recipient list for "email everyone"
 ```
 
 ---
