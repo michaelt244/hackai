@@ -76,7 +76,7 @@ def send_email(to: str, subject: str, body: str) -> str:
     msg["to"] = recipient
     msg["subject"] = subject
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-    service.messages().send(userId="me", body={"raw": raw}).execute()
+    service.users().messages().send(userId="me", body={"raw": raw}).execute()
     return f"Done: email sent to {recipient}"
 
 
