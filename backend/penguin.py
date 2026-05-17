@@ -123,7 +123,6 @@ async def _parse_action(action_text: str) -> dict | None:
             },
         )
     raw = resp.json()["choices"][0]["message"]["content"].strip()
-    # Strip markdown fences if the model adds them
     if "```" in raw:
         raw = raw.split("```")[1]
         if raw.startswith("json"):
@@ -132,7 +131,6 @@ async def _parse_action(action_text: str) -> dict | None:
 
 
 async def _wrap_in_penguin_voice(raw_result: str, action_text: str) -> str:
-    """Give Penguin's dry voice to action results instead of raw API output."""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {
@@ -169,7 +167,6 @@ async def _handle_action(action_text: str) -> str:
     params = parsed.get("params", {})
     print(f"[penguin] action={action} params={params}")
 
-    # Validate required params before hitting Google APIs
     required = {
         "create_event": ["title", "start_iso", "end_iso"],
         "send_email": ["to", "subject", "body"],
@@ -198,7 +195,7 @@ async def _handle_action(action_text: str) -> str:
     try:
         return await _wrap_in_penguin_voice(raw, action_text)
     except Exception:
-        return raw  # Fall back to raw result if voice wrap fails
+        return raw
 
 
 async def _send(text: str):
@@ -275,7 +272,6 @@ async def webhook(request: Request):
             print("[penguin] skip: no @penguin mention")
             return {"ok": True}
 
-        # Strip @penguin and check for action: prefix
         clean = text.strip()
         for prefix in ("@penguin", "@Penguin"):
             clean = clean.replace(prefix, "")
