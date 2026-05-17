@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import google_tools
 from context import add_message, get_context
 from crm_agent import parse_voice_note
 from penguin import router as penguin_router
@@ -107,6 +108,16 @@ async def warmup():
             except Exception as e:
                 results[intent] = str(e)
     return {"warmed": results}
+
+
+@app.get("/test-google")
+async def test_google():
+    """Verify Google credentials work — call this before the demo."""
+    try:
+        events = google_tools.get_calendar_events(days=3)
+        return {"status": "ok", "calendar_preview": events}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
 
 
 # OpenAI-compatible endpoint for Tencent TRTC Conversational AI

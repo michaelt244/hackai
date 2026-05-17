@@ -32,6 +32,11 @@ env/
 *.swp
 *.swo
 
+# Google OAuth — never commit these
+credentials.json
+client_secret*.json
+get_google_token.py
+
 # Logs
 *.log
 
