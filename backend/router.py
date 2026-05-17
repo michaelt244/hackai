@@ -165,10 +165,15 @@ async def _call_model(
             headers=HF_HEADERS,
             json={"model": worker.model_id, "messages": messages, "max_tokens": worker.max_tokens},
         )
-        data = resp.json()
+    if resp.status_code != 200:
+        raise RuntimeError(f"HF {resp.status_code} for {worker.model_id}: {resp.text[:300]}")
+    data = resp.json()
+    try:
         content = data["choices"][0]["message"]["content"]
-        tokens = data.get("usage", {}).get("completion_tokens", len(content.split()))
-        return content, tokens
+    except (KeyError, IndexError, TypeError):
+        raise RuntimeError(f"HF malformed response for {worker.model_id}: {str(data)[:300]}")
+    tokens = data.get("usage", {}).get("completion_tokens", len(content.split()))
+    return content, tokens
 
 
 async def route_message(message: str, context: list[dict]) -> dict:
